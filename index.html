@@ -1,0 +1,1674 @@
+<!--
+  DWELLY LEAVE TRACKER — SETUP GUIDE
+  ====================================
+  1. Go to https://console.cloud.google.com
+     - Create a new project (e.g. "Dwelly Leave Tracker")
+     - Enable: Google Calendar API, Google Sheets API, Gmail API
+     - Create OAuth 2.0 credentials (Web Application type)
+     - Add Authorised JavaScript Origin: https://YOUR-USERNAME.github.io
+     - Copy the Client ID
+  2. Create a Google Sheet
+     - Name the first sheet tab: Absences
+     - Copy the Sheet ID from the URL (the long string between /d/ and /edit)
+  3. Edit the CONFIG block in this file:
+     - Paste your Client ID into GOOGLE_CLIENT_ID
+     - Paste your Sheet ID into GOOGLE_SHEETS_ID
+     - Replace notification emails with real addresses
+  4. Push to GitHub
+     - Create a repo (e.g. dwelly-leave-tracker)
+     - Push this file as index.html
+     - Go to Settings → Pages → Source: main branch / root
+     - Your tracker will be live at https://YOUR-USERNAME.github.io/dwelly-leave-tracker
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dwelly Leave Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --primary: #6366f1;
+      --primary-light: #ede9fe;
+      --danger: #ef4444;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --today-bg: #ede9fe;
+      --sidebar-w: 180px;
+      --row-h: 44px;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── HEADER ── */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    #header .logo {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--primary);
+      letter-spacing: -0.3px;
+    }
+    #header .logo span { color: var(--text); }
+    #user-area { display: flex; align-items: center; gap: 10px; }
+    #user-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+      cursor: default;
+    }
+    #user-email { font-size: 13px; color: var(--text-secondary); }
+    #sign-out-btn {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    #sign-out-btn:hover { background: var(--bg); }
+
+    /* ── AUTH SCREEN ── */
+    #auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 56px);
+      gap: 16px;
+    }
+    #auth-screen h2 { font-size: 22px; font-weight: 700; }
+    #auth-screen p { color: var(--text-secondary); font-size: 14px; }
+    #sign-in-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: box-shadow 0.15s;
+    }
+    #sign-in-btn:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    #sign-in-btn svg { flex-shrink: 0; }
+
+    /* ── TOOLBAR ── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    #add-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    #add-btn:hover { opacity: 0.9; }
+    .week-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .week-nav button {
+      width: 30px; height: 30px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: var(--text);
+    }
+    .week-nav button:hover { background: var(--bg); }
+    #today-badge {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    #today-btn {
+      font-size: 12px;
+      color: var(--primary);
+      background: none;
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    #today-btn:hover { background: var(--primary-light); }
+
+    /* ── MAIN LAYOUT ── */
+    #app {
+      display: none;
+      flex-direction: column;
+      height: calc(100vh - 56px);
+    }
+    #app.visible { display: flex; }
+    #main-area {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .sidebar-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-secondary);
+      padding: 14px 14px 6px;
+    }
+    .sidebar-person {
+      height: var(--row-h);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 13px;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-summary-row {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    /* ── GANTT ── */
+    #gantt-wrapper {
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: auto;
+      position: relative;
+    }
+    #gantt {
+      min-width: 100%;
+      display: inline-block;
+      vertical-align: top;
+    }
+    .gantt-header {
+      display: flex;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--surface);
+      border-bottom: 2px solid var(--border);
+    }
+    .week-group {
+      display: flex;
+      flex-direction: column;
+    }
+    .week-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 4px 8px 0;
+      text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .day-headers {
+      display: flex;
+    }
+    .day-col-header {
+      min-width: 36px;
+      flex: 1;
+      text-align: center;
+      padding: 2px 0 4px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      border-right: 1px solid var(--border);
+    }
+    .day-col-header.today { background: var(--today-bg); color: var(--primary); font-weight: 700; }
+
+    .gantt-body { position: relative; }
+    .gantt-row {
+      display: flex;
+      height: var(--row-h);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .gantt-row.summary-row {
+      height: 36px;
+      background: var(--bg);
+    }
+    .gantt-cell {
+      min-width: 36px;
+      flex: 1;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .gantt-cell.today { background: var(--today-bg); }
+    .gantt-cell.past { /* no bg, only blocks faded */ }
+
+    .absence-block {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      padding: 0 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: filter 0.15s;
+      z-index: 2;
+    }
+    .absence-block:hover { filter: brightness(0.93); }
+    .absence-block.past { opacity: 0.45; }
+
+    .summary-text {
+      font-size: 11px;
+      color: var(--text-secondary);
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    /* ── MODAL ── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.45);
+      backdrop-filter: blur(2px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal {
+      background: var(--surface);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      padding: 28px;
+    }
+    #modal h2 { font-size: 18px; margin-bottom: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .form-group select,
+    .form-group input[type="date"],
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group select:focus,
+    .form-group input:focus,
+    .form-group textarea:focus { border-color: var(--primary); }
+    .form-group textarea { resize: vertical; min-height: 72px; }
+    .date-row { display: flex; gap: 12px; }
+    .date-row .form-group { flex: 1; }
+    #working-days-hint {
+      font-size: 12px;
+      color: var(--primary);
+      margin-top: 6px;
+      min-height: 18px;
+    }
+    .form-error {
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 4px;
+    }
+    .char-count {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-align: right;
+      margin-top: 3px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .btn-primary {
+      flex: 1;
+      padding: 10px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary {
+      padding: 10px 20px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: var(--bg); }
+    .btn-danger {
+      padding: 10px 20px;
+      background: var(--surface);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn-danger:hover { background: #fff5f5; }
+    .btn-loading { opacity: 0.7; pointer-events: none; }
+
+    /* ── TOASTS ── */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 320px;
+    }
+    .toast {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      animation: slideIn 0.2s ease-out;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.4;
+    }
+    .toast.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .toast.warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .toast.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .toast .toast-close {
+      margin-left: auto;
+      cursor: pointer;
+      opacity: 0.6;
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .toast .toast-close:hover { opacity: 1; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ── SPINNER ── */
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(248,250,252,0.8);
+      z-index: 150;
+      align-items: center;
+      justify-content: center;
+    }
+    #loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── ERROR BANNER ── */
+    #error-banner {
+      display: none;
+      padding: 12px 20px;
+      background: #fef2f2;
+      border-bottom: 1px solid #fecaca;
+      color: #991b1b;
+      font-size: 13px;
+      align-items: center;
+      gap: 8px;
+    }
+    #error-banner.visible { display: flex; }
+
+    /* ── CONFIRM DIALOG ── */
+    #confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.5);
+      z-index: 250;
+      align-items: center;
+      justify-content: center;
+    }
+    #confirm-overlay.open { display: flex; }
+    #confirm-box {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 24px;
+      max-width: 360px;
+      width: 90%;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+    }
+    #confirm-box p { font-size: 15px; margin-bottom: 20px; line-height: 1.5; }
+    #confirm-box .actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    /* ── PERSON SUMMARY POPOVER ── */
+    #person-popover {
+      position: fixed;
+      z-index: 350;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.14);
+      padding: 16px 18px;
+      min-width: 220px;
+      max-width: 280px;
+      font-size: 13px;
+    }
+    #person-popover h3 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+    .person-stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .person-stat-row:last-child { border-bottom: none; }
+    .person-stat-label { color: var(--text-secondary); }
+    .person-stat-val { font-weight: 600; color: var(--text); }
+    .person-popover-year {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    #person-popover-close {
+      position: absolute;
+      top: 10px; right: 12px;
+      cursor: pointer;
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1;
+    }
+    #person-popover-close:hover { color: var(--text); }
+    .sidebar-person { cursor: pointer; }
+    .sidebar-person:hover { background: var(--bg); color: var(--primary); }
+
+    /* ── TOOLTIP ── */
+    .tooltip-box {
+      position: fixed;
+      background: var(--text);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: none;
+      z-index: 400;
+      max-width: 220px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      white-space: pre-line;
+    }
+
+    /* ── MOBILE ── */
+    @media (max-width: 767px) {
+      #sidebar {
+        display: none;
+      }
+      #mobile-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .mobile-tab {
+        flex: 1;
+        padding: 10px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        color: var(--text-secondary);
+      }
+      .mobile-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+      #modal {
+        max-width: 100%;
+        max-height: 100%;
+        height: 100%;
+        border-radius: 0;
+        padding: 20px;
+      }
+      #modal-overlay { align-items: flex-end; }
+      #modal { border-radius: 16px 16px 0 0; max-height: 95vh; }
+      #toolbar { flex-wrap: wrap; gap: 8px; }
+      .week-nav { margin-left: 0; }
+    }
+    @media (min-width: 768px) {
+      #mobile-tabs { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <div class="logo">Dwelly <span>Leave Tracker</span></div>
+  <div id="user-area">
+    <div id="sign-in-area">
+      <button id="sign-in-btn">
+        ▶ &nbsp;Enter Demo
+      </button>
+    </div>
+    <div id="signed-in-area" style="display:none; align-items:center; gap:10px;">
+      <div id="user-avatar"></div>
+      <span id="user-email"></span>
+      <button id="sign-out-btn">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<!-- Auth screen -->
+<div id="auth-screen">
+  <h2>Team Leave Tracker</h2>
+  <p>Demo mode — data is stored locally in your browser.</p>
+</div>
+
+<!-- Error banner -->
+<div id="error-banner">
+  <span>⚠</span>
+  <span id="error-banner-text">Could not load absences — check your connection and refresh</span>
+</div>
+
+<!-- App -->
+<div id="app">
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="add-btn">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Log Absence
+    </button>
+    <div id="today-badge"></div>
+    <button id="today-btn">Today</button>
+    <div class="week-nav">
+      <button id="prev-btn">&#8249;</button>
+      <button id="next-btn">&#8250;</button>
+    </div>
+  </div>
+
+  <!-- Mobile tabs -->
+  <div id="mobile-tabs">
+    <div class="mobile-tab active" data-tab="all">All</div>
+    <div class="mobile-tab" data-tab="coordinators">Coordinators</div>
+    <div class="mobile-tab" data-tab="negotiators">Negotiators</div>
+  </div>
+
+  <div id="main-area">
+    <!-- Sidebar -->
+    <div id="sidebar"></div>
+    <!-- Gantt -->
+    <div id="gantt-wrapper">
+      <div id="gantt"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title">Log Absence</h2>
+    <div class="form-group">
+      <label for="f-person">Person</label>
+      <select id="f-person"></select>
+    </div>
+    <div class="form-group">
+      <label for="f-type">Absence Type</label>
+      <select id="f-type"></select>
+    </div>
+    <div class="date-row">
+      <div class="form-group">
+        <label for="f-start">Start Date</label>
+        <input type="date" id="f-start" />
+      </div>
+      <div class="form-group">
+        <label for="f-end">End Date</label>
+        <input type="date" id="f-end" />
+      </div>
+    </div>
+    <div id="working-days-hint"></div>
+    <div id="date-error" class="form-error"></div>
+    <div class="form-group" style="margin-top:12px;">
+      <label for="f-notes">Notes <span style="font-weight:400;color:var(--text-secondary)">(optional)</span></label>
+      <textarea id="f-notes" maxlength="280" placeholder="Any additional details…"></textarea>
+      <div class="char-count"><span id="notes-len">0</span>/280</div>
+    </div>
+    <div id="modal-error" class="form-error" style="margin-top:4px;"></div>
+    <div class="modal-actions">
+      <button class="btn-danger" id="delete-btn" style="display:none;">Delete</button>
+      <button class="btn-secondary" id="cancel-btn">Cancel</button>
+      <button class="btn-primary" id="submit-btn">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm dialog -->
+<div id="confirm-overlay">
+  <div id="confirm-box">
+    <p id="confirm-msg">Delete this absence? This will remove the calendar event.</p>
+    <div class="actions">
+      <button class="btn-secondary" id="confirm-cancel">Cancel</button>
+      <button class="btn-danger" id="confirm-delete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay"><div class="spinner"></div></div>
+
+<!-- Tooltip -->
+<div class="tooltip-box" id="tooltip" style="display:none;"></div>
+
+<!-- Person summary popover -->
+<div id="person-popover" style="display:none;">
+  <span id="person-popover-close">×</span>
+  <h3 id="person-popover-name"></h3>
+  <div class="person-popover-year" id="person-popover-year"></div>
+  <div id="person-popover-stats"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG — edit before deploy
+// ─────────────────────────────────────────────
+const CONFIG = {
+  // ── Live mode: paste your Apps Script Web App URL here ──────────
+  // Leave empty ('') to run in demo mode (localStorage only)
+  APPS_SCRIPT_URL: '',
+
+  // ── Notification recipients (used by the Apps Script backend) ───
+  // These are set in appsscript.gs — shown here for reference only
+  NOTIFICATION_EMAILS: ['katya@dwelly.group', 'director@youragency.com'],
+
+  WEEKS_AHEAD: 8,
+  TEAM: {
+    coordinators: [
+      'Sarah Mitchell',
+      'James Wilson',
+      'Emma Thompson',
+      'Rachel Davies',
+      'Oliver Brown'
+    ],
+    negotiators: [
+      'Tom Harrison',
+      'Priya Patel',
+      'Luke Morrison',
+      'Charlotte Evans',
+      'Ben Okafor',
+      'Zoe Clarke'
+    ]
+  },
+  ABSENCE_TYPES: [
+    { label: 'Annual Leave',  color: '#22c55e', textColor: '#fff' },
+    { label: 'Sick Leave',    color: '#f97316', textColor: '#fff' }
+  ]
+};
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let currentUser = null;
+let absences = [];          // [{id,person,team,type,startDate,endDate,notes,calendarEventId,submittedBy,submittedAt}]
+let viewStartMonday = null; // Date — start of the 8-week window
+let editingId = null;       // null = new, string = edit mode
+
+// ─────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function toIso(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getMonday(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date;
+}
+
+function workingDays(startDate, endDate) {
+  let count = 0;
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  while (current <= end) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) count++;
+    current.setDate(current.getDate() + 1);
+  }
+  return count;
+}
+
+function initials(name) {
+  return name.split(' ').map(p => p[0]).join('').slice(0, 3).toUpperCase();
+}
+
+function formatDate(isoStr) {
+  const d = parseDate(isoStr);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function getTeamFor(name) {
+  if (CONFIG.TEAM.coordinators.includes(name)) return 'coordinators';
+  if (CONFIG.TEAM.negotiators.includes(name)) return 'negotiators';
+  return '';
+}
+
+function typeConfig(label) {
+  return CONFIG.ABSENCE_TYPES.find(t => t.label === label) || CONFIG.ABSENCE_TYPES[0];
+}
+
+// Build list of working days (Mon–Fri) for the 8-week window
+function buildDayList() {
+  const days = [];
+  const cur = new Date(viewStartMonday);
+  const limit = CONFIG.WEEKS_AHEAD * 7;
+  for (let i = 0; i < limit; i++) {
+    const d = cur.getDay();
+    if (d !== 0 && d !== 6) days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+// Group days by week (arrays of up to 5 days)
+function groupByWeek(days) {
+  const weeks = [];
+  let wk = null;
+  for (const d of days) {
+    const mon = toIso(getMonday(d));
+    if (!wk || wk.key !== mon) {
+      wk = { key: mon, days: [] };
+      weeks.push(wk);
+    }
+    wk.days.push(d);
+  }
+  return weeks;
+}
+
+// ─────────────────────────────────────────────
+//  TOAST
+// ─────────────────────────────────────────────
+function toast(msg, type = 'success', persist = false) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${msg}</span><span class="toast-close">×</span>`;
+  el.querySelector('.toast-close').addEventListener('click', () => el.remove());
+  container.appendChild(el);
+  if (!persist) setTimeout(() => el.remove(), 4000);
+  return el;
+}
+
+// ─────────────────────────────────────────────
+//  LOADING
+// ─────────────────────────────────────────────
+function showLoading() { document.getElementById('loading-overlay').classList.add('visible'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.remove('visible'); }
+
+// ─────────────────────────────────────────────
+//  DEMO AUTH
+// ─────────────────────────────────────────────
+function signIn() {
+  onSignedIn({ name: 'Demo User', email: 'demo@dwelly.group' });
+}
+
+function signOut() {
+  currentUser = null;
+  sessionStorage.removeItem('demo_user');
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('signed-in-area').style.display = 'none';
+  document.getElementById('sign-in-area').style.display = '';
+}
+
+function onSignedIn(profile) {
+  currentUser = profile;
+  sessionStorage.setItem('demo_user', JSON.stringify(profile));
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('sign-in-area').style.display = 'none';
+  const sArea = document.getElementById('signed-in-area');
+  sArea.style.display = 'flex';
+  document.getElementById('user-avatar').textContent = (profile.name || profile.email || '?')[0].toUpperCase();
+  document.getElementById('user-email').textContent = profile.email || '';
+  initTracker();
+}
+
+// ─────────────────────────────────────────────
+//  API LAYER
+//  Live mode:  calls Apps Script Web App via GET + JSON param
+//  Demo mode:  localStorage (APPS_SCRIPT_URL is empty)
+// ─────────────────────────────────────────────
+const STORE_KEY = 'dwelly_leave_demo';
+
+async function callBackend(payload) {
+  if (CONFIG.APPS_SCRIPT_URL) {
+    const url = CONFIG.APPS_SCRIPT_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
+    const resp = await fetch(url);
+    const json = await resp.json();
+    if (!json.ok) throw new Error(json.error || 'Backend error');
+    return json;
+  }
+  return callLocalStore(payload);
+}
+
+// ── localStorage fallback ──────────────────────────────────────
+function localLoad() {
+  try { const r = localStorage.getItem(STORE_KEY); if (r) return JSON.parse(r); } catch(e) {}
+  const data = seedData();
+  localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  return data;
+}
+function localSave(data) { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+
+function callLocalStore(payload) {
+  const store = localLoad();
+  if (payload.action === 'fetch') {
+    return { absences: store };
+  }
+  if (payload.action === 'create') {
+    const calId = 'demo-cal-' + Math.random().toString(36).slice(2);
+    store.push({ ...payload, calendarEventId: calId });
+    localSave(store);
+    console.log('[Demo] Calendar event + email would fire for', payload.person);
+    toast(`[Demo] Calendar & email would go to ${CONFIG.NOTIFICATION_EMAILS.join(', ')}`, 'warning');
+    return { calendarEventId: calId };
+  }
+  if (payload.action === 'update') {
+    const i = store.findIndex(a => a.id === payload.id);
+    if (i >= 0) store[i] = { ...store[i], ...payload };
+    localSave(store);
+    console.log('[Demo] Calendar update + email would fire for', payload.person);
+    toast(`[Demo] Calendar & email would go to ${CONFIG.NOTIFICATION_EMAILS.join(', ')}`, 'warning');
+    return {};
+  }
+  if (payload.action === 'delete') {
+    localSave(store.filter(a => a.id !== payload.id));
+    console.log('[Demo] Calendar delete + email would fire');
+    toast(`[Demo] Cancellation email would go to ${CONFIG.NOTIFICATION_EMAILS.join(', ')}`, 'warning');
+    return {};
+  }
+  return {};
+}
+
+function seedData() {
+  const today = new Date();
+  function rel(deltaDays) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + deltaDays);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    return toIso(d);
+  }
+  function relEnd(start, workDays) {
+    let count = 0, d = parseDate(start);
+    while (count < workDays - 1) {
+      d.setDate(d.getDate() + 1);
+      if (d.getDay() !== 0 && d.getDay() !== 6) count++;
+    }
+    return toIso(d);
+  }
+  const s = [
+    { person: 'Sarah Mitchell',  team: 'coordinators', type: 'Annual Leave', start: rel(-1), days: 4,  notes: 'Long weekend trip' },
+    { person: 'Tom Harrison',    team: 'negotiators',  type: 'Sick Leave',   start: rel(0),  days: 1,  notes: '' },
+    { person: 'Charlotte Evans', team: 'negotiators',  type: 'Sick Leave',   start: rel(1),  days: 1,  notes: '' },
+    { person: 'Emma Thompson',   team: 'coordinators', type: 'Annual Leave', start: rel(6),  days: 5,  notes: 'Holiday' },
+    { person: 'Rachel Davies',   team: 'coordinators', type: 'Annual Leave', start: rel(8),  days: 3,  notes: '' },
+    { person: 'Priya Patel',     team: 'negotiators',  type: 'Annual Leave', start: rel(12), days: 5,  notes: 'Family visit' },
+    { person: 'James Wilson',    team: 'coordinators', type: 'Annual Leave', start: rel(14), days: 5,  notes: '' },
+    { person: 'Luke Morrison',   team: 'negotiators',  type: 'Sick Leave',   start: rel(2),  days: 2,  notes: '' },
+    { person: 'Ben Okafor',      team: 'negotiators',  type: 'Annual Leave', start: rel(20), days: 5,  notes: 'Conference' },
+    { person: 'Oliver Brown',    team: 'coordinators', type: 'Annual Leave', start: rel(26), days: 3,  notes: '' },
+  ];
+  return s.map(r => ({
+    id: uuid(), person: r.person, team: r.team, type: r.type,
+    startDate: r.start, endDate: relEnd(r.start, r.days), notes: r.notes,
+    calendarEventId: 'demo-' + Math.random().toString(36).slice(2),
+    submittedBy: 'demo@dwelly.group', submittedAt: new Date().toISOString()
+  }));
+}
+
+async function ensureSheet() { /* handled by Apps Script on first write */ }
+
+async function fetchAbsences() {
+  const result = await callBackend({ action: 'fetch' });
+  return result.absences || [];
+}
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function renderSidebar(days, weeks) {
+  const allPersons = [
+    ...CONFIG.TEAM.coordinators,
+    ...CONFIG.TEAM.negotiators
+  ];
+  const todayIso = toIso(new Date());
+
+  let sb = '';
+  // spacer for header
+  sb += `<div style="height:${getHeaderHeight()}px;"></div>`;
+
+  sb += `<div class="sidebar-group-label">Team Coordinators</div>`;
+  for (const p of CONFIG.TEAM.coordinators) {
+    sb += `<div class="sidebar-person" data-person="${p}" title="Click to see ${p}'s year summary">${p}</div>`;
+  }
+
+  // summary row spacer
+  sb += `<div class="sidebar-summary-row">Week summary</div>`;
+
+  sb += `<div class="sidebar-group-label">Letting Negotiators</div>`;
+  for (const p of CONFIG.TEAM.negotiators) {
+    sb += `<div class="sidebar-person" data-person="${p}" title="Click to see ${p}'s year summary">${p}</div>`;
+  }
+
+  document.getElementById('sidebar').innerHTML = sb;
+}
+
+function getHeaderHeight() { return 46; } // week label + day labels
+
+function renderGantt() {
+  const todayIso = toIso(new Date());
+  const days = buildDayList();
+  const weeks = groupByWeek(days);
+
+  renderSidebar(days, weeks);
+
+  const allPersons = [
+    ...CONFIG.TEAM.coordinators,
+    ...CONFIG.TEAM.negotiators
+  ];
+
+  // Build a quick index: dayIso -> column index
+  const dayIndex = {};
+  days.forEach((d, i) => { dayIndex[toIso(d)] = i; });
+
+  // ── HEADER ──
+  let html = `<div class="gantt-header">`;
+  for (const wk of weeks) {
+    const monDate = wk.days[0];
+    const label = monDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    html += `<div class="week-group" style="display:flex;flex-direction:column;">`;
+    html += `<div class="week-label" style="flex:1;">${label}</div>`;
+    html += `<div class="day-headers" style="display:flex;">`;
+    for (const d of wk.days) {
+      const iso = toIso(d);
+      const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 1);
+      const dayNum = d.getDate();
+      const isToday = iso === todayIso;
+      html += `<div class="day-col-header${isToday ? ' today' : ''}" data-date="${iso}">${dayName}<br><strong>${dayNum}</strong></div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += `</div>`;
+
+  // ── BODY ──
+  html += `<div class="gantt-body">`;
+
+  // Render a person row
+  function personRow(person, cls = '') {
+    html += `<div class="gantt-row${cls ? ' ' + cls : ''}" data-person="${person}">`;
+    for (const d of days) {
+      const iso = toIso(d);
+      const isToday = iso === todayIso;
+      const isPast = iso < todayIso;
+      html += `<div class="gantt-cell${isToday ? ' today' : ''}${isPast ? ' past' : ''}" data-date="${iso}"></div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Coordinators
+  for (const p of CONFIG.TEAM.coordinators) personRow(p);
+
+  // ── SUMMARY ROW ──
+  html += `<div class="gantt-row summary-row" id="summary-row">`;
+  for (const d of days) {
+    html += `<div class="gantt-cell" data-date="${toIso(d)}"></div>`;
+  }
+  html += `</div>`;
+
+  // Negotiators
+  for (const p of CONFIG.TEAM.negotiators) personRow(p);
+
+  html += `</div>`; // gantt-body
+
+  document.getElementById('gantt').innerHTML = html;
+
+  // ── UPDATE TODAY BADGE ──
+  const today = new Date();
+  document.getElementById('today-badge').textContent =
+    today.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+
+  // ── PLACE ABSENCE BLOCKS ──
+  placeBlocks(days, dayIndex);
+  placeSummary(days, weeks);
+}
+
+function placeBlocks(days, dayIndex) {
+  const todayIso = toIso(new Date());
+  const ganttBody = document.querySelector('.gantt-body');
+  if (!ganttBody) return;
+
+  // For each absence, find rows and inject blocks
+  for (const abs of absences) {
+    const row = ganttBody.querySelector(`.gantt-row[data-person="${CSS.escape(abs.person)}"]`);
+    if (!row) continue;
+
+    // Find visible start/end within window
+    const winStart = toIso(viewStartMonday);
+    const winEndDate = new Date(viewStartMonday);
+    winEndDate.setDate(winEndDate.getDate() + CONFIG.WEEKS_AHEAD * 7 - 1);
+    const winEnd = toIso(winEndDate);
+
+    const clampedStart = abs.startDate > winStart ? abs.startDate : winStart;
+    const clampedEnd   = abs.endDate   < winEnd   ? abs.endDate   : winEnd;
+
+    if (clampedStart > clampedEnd) continue;
+
+    // Find first and last working day cells
+    let firstCell = null, lastCell = null;
+    let cur = parseDate(clampedStart);
+    const end = parseDate(clampedEnd);
+    while (cur <= end) {
+      const iso = toIso(cur);
+      if (dayIndex[iso] !== undefined) {
+        const cell = row.querySelector(`.gantt-cell[data-date="${iso}"]`);
+        if (cell) {
+          if (!firstCell) firstCell = cell;
+          lastCell = cell;
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    if (!firstCell || !lastCell) continue;
+
+    // Calculate position
+    const rowRect = row.getBoundingClientRect();
+    const firstRect = firstCell.getBoundingClientRect();
+    const lastRect  = lastCell.getBoundingClientRect();
+    const ganttRect = document.getElementById('gantt-wrapper').getBoundingClientRect();
+
+    // Use offsetLeft instead for reliable absolute positioning
+    const left  = firstCell.offsetLeft + 2;
+    const width = lastCell.offsetLeft + lastCell.offsetWidth - firstCell.offsetLeft - 4;
+
+    const tc = typeConfig(abs.type);
+    const isPast = abs.endDate < todayIso;
+    const wd = workingDays(parseDate(abs.startDate), parseDate(abs.endDate));
+
+    const block = document.createElement('div');
+    block.className = `absence-block${isPast ? ' past' : ''}`;
+    block.style.cssText = `left:${left}px;width:${width}px;background:${tc.color};color:${tc.textColor};`;
+    block.dataset.id = abs.id;
+
+    // Label: initials if narrow
+    if (width > 60) {
+      block.textContent = initials(abs.person);
+    }
+
+    // Tooltip
+    block.addEventListener('mouseenter', e => showTooltip(e, abs, wd));
+    block.addEventListener('mousemove', e => moveTooltip(e));
+    block.addEventListener('mouseleave', hideTooltip);
+    block.addEventListener('click', () => openEditModal(abs.id));
+
+    row.style.position = 'relative';
+    row.appendChild(block);
+  }
+}
+
+function showTooltip(e, abs, wd) {
+  const tt = document.getElementById('tooltip');
+  tt.textContent = `${abs.person}\n${abs.type}\n${formatDate(abs.startDate)} → ${formatDate(abs.endDate)}\n${wd} working day${wd !== 1 ? 's' : ''}${abs.notes ? '\n' + abs.notes : ''}`;
+  tt.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const tt = document.getElementById('tooltip');
+  tt.style.left = (e.clientX + 12) + 'px';
+  tt.style.top  = (e.clientY - 8)  + 'px';
+}
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+}
+
+function placeSummary(days, weeks) {
+  // For each week show: "Week of X: Y out (A Annual, B Sick)"
+  const summaryRow = document.getElementById('summary-row');
+  if (!summaryRow) return;
+
+  // Clear existing text cells
+  const cells = summaryRow.querySelectorAll('.gantt-cell');
+
+  // For each week, compute summary, place text in first cell of week
+  for (const wk of weeks) {
+    if (!wk.days.length) continue;
+    const monIso = toIso(wk.days[0]);
+    const friIso = toIso(wk.days[wk.days.length - 1]);
+
+    const inWeek = absences.filter(a => a.startDate <= friIso && a.endDate >= monIso);
+    const total = new Set(inWeek.map(a => a.person)).size;
+    const byType = {};
+    for (const a of inWeek) {
+      byType[a.type] = (byType[a.type] || new Set());
+      byType[a.type].add(a.person);
+    }
+    const parts = Object.entries(byType).map(([t, s]) => `${s.size} ${t}`).join(', ');
+    const label = `${total} out${parts ? ' (' + parts + ')' : ''}`;
+
+    // Find first cell in week
+    const firstCell = summaryRow.querySelector(`.gantt-cell[data-date="${monIso}"]`);
+    if (firstCell) {
+      const span = document.createElement('div');
+      span.className = 'summary-text';
+      span.style.cssText = 'position:absolute;left:4px;top:0;bottom:0;display:flex;align-items:center;pointer-events:none;white-space:nowrap;';
+      span.textContent = `w/c ${wk.days[0].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}: ${label}`;
+      firstCell.style.position = 'relative';
+      firstCell.appendChild(span);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  MODAL
+// ─────────────────────────────────────────────
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Log Absence';
+  document.getElementById('submit-btn').textContent = 'Submit';
+  document.getElementById('delete-btn').style.display = 'none';
+  document.getElementById('modal-error').textContent = '';
+  document.getElementById('date-error').textContent = '';
+
+  const today = toIso(new Date());
+  document.getElementById('f-start').value = today;
+  document.getElementById('f-end').value = today;
+  document.getElementById('f-notes').value = '';
+  document.getElementById('notes-len').textContent = '0';
+  updateWorkingDaysHint();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditModal(id) {
+  const abs = absences.find(a => a.id === id);
+  if (!abs) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Absence';
+  document.getElementById('submit-btn').textContent = 'Update';
+  document.getElementById('delete-btn').style.display = 'block';
+  document.getElementById('modal-error').textContent = '';
+  document.getElementById('date-error').textContent = '';
+
+  document.getElementById('f-person').value = abs.person;
+  document.getElementById('f-type').value = abs.type;
+  document.getElementById('f-start').value = abs.startDate;
+  document.getElementById('f-end').value = abs.endDate;
+  document.getElementById('f-notes').value = abs.notes || '';
+  document.getElementById('notes-len').textContent = (abs.notes || '').length;
+  updateWorkingDaysHint();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  editingId = null;
+}
+
+function populateModalSelects() {
+  const personSel = document.getElementById('f-person');
+  personSel.innerHTML = '';
+  for (const [grp, members] of Object.entries(CONFIG.TEAM)) {
+    const og = document.createElement('optgroup');
+    og.label = grp.charAt(0).toUpperCase() + grp.slice(1);
+    for (const m of members) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      og.appendChild(opt);
+    }
+    personSel.appendChild(og);
+  }
+
+  const typeSel = document.getElementById('f-type');
+  typeSel.innerHTML = '';
+  for (const t of CONFIG.ABSENCE_TYPES) {
+    const opt = document.createElement('option');
+    opt.value = t.label;
+    opt.textContent = t.label;
+    typeSel.appendChild(opt);
+  }
+}
+
+function updateWorkingDaysHint() {
+  const s = document.getElementById('f-start').value;
+  const e = document.getElementById('f-end').value;
+  const hint = document.getElementById('working-days-hint');
+  const err  = document.getElementById('date-error');
+  if (!s || !e) { hint.textContent = ''; return; }
+  if (e < s) {
+    hint.textContent = '';
+    err.textContent = 'End date must be on or after start date.';
+    return;
+  }
+  err.textContent = '';
+  const wd = workingDays(parseDate(s), parseDate(e));
+  hint.textContent = `${wd} working day${wd !== 1 ? 's' : ''}`;
+}
+
+function validateForm() {
+  const person = document.getElementById('f-person').value;
+  const type   = document.getElementById('f-type').value;
+  const start  = document.getElementById('f-start').value;
+  const end    = document.getElementById('f-end').value;
+  const errEl  = document.getElementById('modal-error');
+  const dateErrEl = document.getElementById('date-error');
+
+  dateErrEl.textContent = '';
+  errEl.textContent = '';
+
+  if (!person || !type || !start || !end) {
+    errEl.textContent = 'Please fill in all required fields.';
+    return false;
+  }
+  if (end < start) {
+    dateErrEl.textContent = 'End date must be on or after start date.';
+    return false;
+  }
+
+  // Overlap check (exclude self when editing)
+  const overlapping = absences.filter(a => {
+    if (editingId && a.id === editingId) return false;
+    if (a.person !== person) return false;
+    return a.startDate <= end && a.endDate >= start;
+  });
+  if (overlapping.length) {
+    const conflictDates = overlapping.map(a => `${a.startDate} → ${a.endDate}`).join(', ');
+    errEl.textContent = `Overlapping absence exists for these dates: ${conflictDates}`;
+    return false;
+  }
+
+  // Warn if outside window (but don't block)
+  const winStart = toIso(viewStartMonday);
+  const winEnd = new Date(viewStartMonday);
+  winEnd.setDate(winEnd.getDate() + CONFIG.WEEKS_AHEAD * 7 - 1);
+  const winEndIso = toIso(winEnd);
+  if (end < winStart || start > winEndIso) {
+    toast('Note: these dates are outside the current tracker window but will still be saved.', 'warning');
+  }
+
+  return true;
+}
+
+// ─────────────────────────────────────────────
+//  SUBMIT
+// ─────────────────────────────────────────────
+async function submitAbsence() {
+  if (!validateForm()) return;
+
+  const person = document.getElementById('f-person').value;
+  const type   = document.getElementById('f-type').value;
+  const start  = document.getElementById('f-start').value;
+  const end    = document.getElementById('f-end').value;
+  const notes  = document.getElementById('f-notes').value;
+  const team   = getTeamFor(person);
+
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.classList.add('btn-loading');
+  submitBtn.textContent = editingId ? 'Updating…' : 'Submitting…';
+
+  try {
+    if (!editingId) {
+      const payload = {
+        action: 'create',
+        id: uuid(), person, team, type,
+        startDate: start, endDate: end, notes,
+        submittedBy: currentUser?.email || 'anonymous',
+        submittedAt: new Date().toISOString(),
+        calendarEventId: ''
+      };
+      const result = await callBackend(payload);
+      payload.calendarEventId = result.calendarEventId || '';
+      absences.push(payload);
+    } else {
+      const abs = absences.find(a => a.id === editingId);
+      const payload = { action: 'update', ...abs, team, type, startDate: start, endDate: end, notes };
+      await callBackend(payload);
+      Object.assign(abs, { team, type, startDate: start, endDate: end, notes });
+    }
+  } catch (e) {
+    document.getElementById('modal-error').textContent = e.message || 'Something went wrong — please try again.';
+    submitBtn.classList.remove('btn-loading');
+    submitBtn.textContent = editingId ? 'Update' : 'Submit';
+    return;
+  }
+
+  const wasEditing = editingId;
+  await loadAndRender();
+  closeModal();
+  toast(wasEditing ? '✓ Absence updated' : '✓ Absence logged and calendar updated', 'success');
+}
+
+// ─────────────────────────────────────────────
+//  DELETE
+// ─────────────────────────────────────────────
+function requestDelete() {
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+
+async function confirmDelete() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  const abs = absences.find(a => a.id === editingId);
+  if (!abs) { closeModal(); return; }
+
+  showLoading();
+  try {
+    await callBackend({ action: 'delete', id: abs.id, calendarEventId: abs.calendarEventId, ...abs });
+    absences = absences.filter(a => a.id !== editingId);
+  } catch (e) {
+    toast('Delete failed: ' + (e.message || e), 'error', true);
+    hideLoading();
+    return;
+  }
+
+  await loadAndRender();
+  closeModal();
+  hideLoading();
+  toast('✓ Absence removed', 'success');
+}
+
+// ─────────────────────────────────────────────
+//  LOAD & RENDER
+// ─────────────────────────────────────────────
+async function loadAndRender() {
+  try {
+    absences = await fetchAbsences();
+  } catch (e) {
+    document.getElementById('error-banner').classList.add('visible');
+    document.getElementById('error-banner-text').textContent = 'Could not load absences — check your connection and refresh';
+    absences = [];
+  }
+  renderGantt();
+}
+
+async function initTracker() {
+  viewStartMonday = getMonday(new Date());
+  showLoading();
+  try {
+    await ensureSheet();
+    await loadAndRender();
+  } catch (e) {
+    document.getElementById('error-banner').classList.add('visible');
+    toast('Failed to initialise: ' + (e.result?.error?.message || e.message || e), 'error', true);
+  }
+  hideLoading();
+  populateModalSelects();
+}
+
+// ─────────────────────────────────────────────
+//  PERSON YEAR SUMMARY
+// ─────────────────────────────────────────────
+function showPersonSummary(person, anchorEl) {
+  const year = new Date().getFullYear();
+  const pop  = document.getElementById('person-popover');
+
+  // Filter absences that overlap the current year
+  const yearStart = `${year}-01-01`;
+  const yearEnd   = `${year}-12-31`;
+  const mine = absences.filter(a =>
+    a.person === person && a.startDate <= yearEnd && a.endDate >= yearStart
+  );
+
+  // Sum working days per type, clamped to the year
+  const byType = {};
+  for (const a of mine) {
+    const s = a.startDate < yearStart ? yearStart : a.startDate;
+    const e = a.endDate   > yearEnd   ? yearEnd   : a.endDate;
+    const wd = workingDays(parseDate(s), parseDate(e));
+    byType[a.type] = (byType[a.type] || 0) + wd;
+  }
+
+  const total = Object.values(byType).reduce((s, v) => s + v, 0);
+
+  document.getElementById('person-popover-name').textContent = person;
+  document.getElementById('person-popover-year').textContent = `${year} year to date`;
+
+  let statsHtml = '';
+  if (total === 0) {
+    statsHtml = `<div style="color:var(--text-secondary);padding:4px 0;">No absences recorded yet</div>`;
+  } else {
+    for (const [type, days] of Object.entries(byType)) {
+      const tc = typeConfig(type);
+      statsHtml += `
+        <div class="person-stat-row">
+          <span class="person-stat-label">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${tc.color};margin-right:5px;"></span>
+            ${type}
+          </span>
+          <span class="person-stat-val">${days} day${days !== 1 ? 's' : ''}</span>
+        </div>`;
+    }
+    statsHtml += `
+      <div class="person-stat-row" style="margin-top:4px;">
+        <span class="person-stat-label" style="font-weight:600;">Total</span>
+        <span class="person-stat-val">${total} day${total !== 1 ? 's' : ''}</span>
+      </div>`;
+  }
+  document.getElementById('person-popover-stats').innerHTML = statsHtml;
+
+  // Position next to the sidebar name
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.display = 'block';
+  const popW = pop.offsetWidth;
+  const popH = pop.offsetHeight;
+  let left = rect.right + 8;
+  let top  = rect.top;
+  // Keep on screen
+  if (left + popW > window.innerWidth - 8) left = rect.left - popW - 8;
+  if (top + popH > window.innerHeight - 8) top = window.innerHeight - popH - 8;
+  pop.style.left = left + 'px';
+  pop.style.top  = Math.max(8, top) + 'px';
+}
+
+function hidePersonPopover() {
+  document.getElementById('person-popover').style.display = 'none';
+}
+
+// ─────────────────────────────────────────────
+//  WEEK NAVIGATION
+// ─────────────────────────────────────────────
+function shiftWeek(delta) {
+  viewStartMonday = new Date(viewStartMonday);
+  viewStartMonday.setDate(viewStartMonday.getDate() + delta * 7);
+  renderGantt();
+}
+
+// ─────────────────────────────────────────────
+//  EVENT LISTENERS
+// ─────────────────────────────────────────────
+document.getElementById('sign-in-btn').addEventListener('click', signIn);
+document.getElementById('sign-out-btn').addEventListener('click', signOut);
+document.getElementById('add-btn').addEventListener('click', openAddModal);
+document.getElementById('cancel-btn').addEventListener('click', closeModal);
+document.getElementById('submit-btn').addEventListener('click', submitAbsence);
+document.getElementById('delete-btn').addEventListener('click', requestDelete);
+document.getElementById('prev-btn').addEventListener('click', () => shiftWeek(-1));
+document.getElementById('next-btn').addEventListener('click', () => shiftWeek(1));
+document.getElementById('today-btn').addEventListener('click', () => {
+  viewStartMonday = getMonday(new Date());
+  renderGantt();
+});
+document.getElementById('confirm-delete').addEventListener('click', confirmDelete);
+document.getElementById('confirm-cancel').addEventListener('click', () => {
+  document.getElementById('confirm-overlay').classList.remove('open');
+});
+document.getElementById('f-start').addEventListener('change', updateWorkingDaysHint);
+document.getElementById('f-end').addEventListener('change', updateWorkingDaysHint);
+document.getElementById('f-notes').addEventListener('input', () => {
+  document.getElementById('notes-len').textContent = document.getElementById('f-notes').value.length;
+});
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// Person summary popover — delegate clicks on sidebar
+document.getElementById('sidebar').addEventListener('click', e => {
+  const el = e.target.closest('.sidebar-person');
+  if (!el) return;
+  e.stopPropagation();
+  showPersonSummary(el.dataset.person, el);
+});
+document.getElementById('person-popover-close').addEventListener('click', hidePersonPopover);
+// Close popover when clicking elsewhere
+document.addEventListener('click', e => {
+  const pop = document.getElementById('person-popover');
+  if (pop.style.display === 'none') return;
+  if (!pop.contains(e.target) && !e.target.closest('.sidebar-person')) hidePersonPopover();
+});
+
+// Mobile tabs
+document.querySelectorAll('.mobile-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    // Filter visibility
+    const filter = tab.dataset.tab;
+    document.querySelectorAll('.gantt-row[data-person]').forEach(row => {
+      const person = row.dataset.person;
+      if (filter === 'all') { row.style.display = ''; return; }
+      const team = getTeamFor(person);
+      row.style.display = team === filter ? '' : 'none';
+    });
+  });
+});
+
+// ─────────────────────────────────────────────
+//  DEMO BOOTSTRAP
+// ─────────────────────────────────────────────
+// Auto-restore session across page reloads
+(function() {
+  const saved = sessionStorage.getItem('demo_user');
+  if (saved) {
+    try { onSignedIn(JSON.parse(saved)); } catch(e) { sessionStorage.removeItem('demo_user'); }
+  }
+})();
+</script>
+
+</body>
+</html>
