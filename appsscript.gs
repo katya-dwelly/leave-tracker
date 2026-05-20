@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────────
-//  DWELLY LEAVE TRACKER — Google Apps Script Backend
-//  Deploy as: Web App → Execute as: Me → Anyone can access
+//  DWELLY LEAVE TRACKER — Google Apps Script
+//  Serves the HTML frontend AND backend in one project.
 // ─────────────────────────────────────────────────────────────────
 //
 //  SETUP:
-//  1. Go to https://script.google.com → New project
-//  2. Paste this file as Code.gs
-//  3. Fill in SHEET_ID and NOTIFY below
-//  4. Click Deploy → New deployment → Web App
-//     - Execute as: Me (katya@dwelly.group)
-//     - Who has access: Anyone
-//  5. Copy the deployment URL into CONFIG.APPS_SCRIPT_URL in index.html
+//  1. https://script.google.com → open your existing project (or new one)
+//  2. Replace Code.gs with this file's contents
+//  3. File menu (top-left, ☰ icon) → click + → HTML → name it `index`
+//     → paste the entire contents of index.html into it → save
+//  4. Edit SHEET_ID below (from your Sheet URL)
+//  5. Deploy → Manage deployments → pencil ✎ on the active one →
+//     Version: New version → Deploy
+//  6. Open the Web app URL — that's your live tracker
 //
 // ─────────────────────────────────────────────────────────────────
 
@@ -22,29 +23,12 @@ const NOTIFY     = [
   // 'director@dwelly.group'
 ];
 
-// ─── ROUTER ──────────────────────────────────────────────────────
-function doGet(e) {
-  try {
-    const payload = JSON.parse(e.parameter.data || '{}');
-    let result;
-    switch (payload.action) {
-      case 'fetch':  result = fetchAbsences();         break;
-      case 'create': result = createAbsence(payload);  break;
-      case 'update': result = updateAbsence(payload);  break;
-      case 'delete': result = deleteAbsence(payload);  break;
-      default: throw new Error('Unknown action: ' + payload.action);
-    }
-    return respond({ ok: true, ...result });
-  } catch (err) {
-    Logger.log('doGet error: ' + err.message);
-    return respond({ ok: false, error: err.message });
-  }
-}
-
-function respond(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+// ─── SERVE THE FRONTEND ──────────────────────────────────────────
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('Dwelly Leave Tracker')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 // ─── SHEET HELPERS ───────────────────────────────────────────────
@@ -62,10 +46,9 @@ function getSheet() {
 function findRow(sheet, id) {
   const ids = sheet.getRange('A:A').getValues().flat();
   const i   = ids.indexOf(id);
-  return i > 0 ? i + 1 : -1; // 1-indexed; skip header at 0
+  return i > 0 ? i + 1 : -1;
 }
 
-// ─── WORKING DAYS ────────────────────────────────────────────────
 function workingDays(startStr, endStr) {
   let count = 0;
   const cur = new Date(startStr + 'T12:00:00');
@@ -78,11 +61,11 @@ function workingDays(startStr, endStr) {
   return count;
 }
 
-// ─── FETCH ALL ───────────────────────────────────────────────────
+// ─── API EXPOSED TO google.script.run ────────────────────────────
 function fetchAbsences() {
   const sheet = getSheet();
   const rows  = sheet.getDataRange().getValues();
-  const absences = rows.slice(1).map(r => ({
+  return rows.slice(1).map(r => ({
     id:              String(r[0] || ''),
     person:          String(r[1] || ''),
     team:            String(r[2] || ''),
@@ -94,34 +77,24 @@ function fetchAbsences() {
     submittedBy:     String(r[8] || ''),
     submittedAt:     String(r[9] || '')
   })).filter(a => a.id);
-  return { absences };
 }
 
-// ─── CREATE ──────────────────────────────────────────────────────
 function createAbsence(data) {
   const sheet = getSheet();
-
-  // Write row (calendarEventId empty for now)
   sheet.appendRow([
     data.id, data.person, data.team, data.type,
     data.startDate, data.endDate, data.notes || '',
     '', data.submittedBy, data.submittedAt
   ]);
 
-  // Calendar event
   const calId = createCalEvent(data);
-
-  // Write calendarEventId back into the row
   const lastRow = sheet.getLastRow();
   sheet.getRange(lastRow, 8).setValue(calId);
 
-  // Email notification
   sendMail(data, 'logged');
-
   return { calendarEventId: calId };
 }
 
-// ─── UPDATE ──────────────────────────────────────────────────────
 function updateAbsence(data) {
   const sheet = getSheet();
   const row   = findRow(sheet, data.id);
@@ -131,14 +104,13 @@ function updateAbsence(data) {
     data.team, data.type, data.startDate, data.endDate, data.notes || ''
   ]]);
 
-  // Update calendar event
   if (data.calendarEventId) {
     try {
       const cal   = CalendarApp.getDefaultCalendar();
       const event = cal.getEventById(data.calendarEventId);
       if (event) {
         const endDate = new Date(data.endDate + 'T12:00:00');
-        endDate.setDate(endDate.getDate() + 1); // exclusive end for all-day
+        endDate.setDate(endDate.getDate() + 1);
         event.setTitle(`${data.type} – ${data.person}`);
         event.setAllDayDates(new Date(data.startDate + 'T12:00:00'), endDate);
         const wd = workingDays(data.startDate, data.endDate);
@@ -154,10 +126,9 @@ function updateAbsence(data) {
   }
 
   sendMail(data, 'updated');
-  return {};
+  return { ok: true };
 }
 
-// ─── DELETE ──────────────────────────────────────────────────────
 function deleteAbsence(data) {
   const sheet = getSheet();
   const row   = findRow(sheet, data.id);
@@ -173,7 +144,7 @@ function deleteAbsence(data) {
   }
 
   sendMail(data, 'cancelled');
-  return {};
+  return { ok: true };
 }
 
 // ─── CALENDAR ────────────────────────────────────────────────────
@@ -181,7 +152,7 @@ function createCalEvent(data) {
   const wd    = workingDays(data.startDate, data.endDate);
   const start = new Date(data.startDate + 'T12:00:00');
   const end   = new Date(data.endDate   + 'T12:00:00');
-  end.setDate(end.getDate() + 1); // all-day end is exclusive
+  end.setDate(end.getDate() + 1);
 
   const event = CalendarApp.getDefaultCalendar().createAllDayEvent(
     `${data.type} – ${data.person}`,
@@ -231,7 +202,6 @@ function sendMail(data, action) {
   GmailApp.sendEmail(
     NOTIFY.join(','),
     subject,
-    // plain-text fallback
     `${data.type} ${verb} — ${data.person}\n${data.startDate} → ${data.endDate} (${wd} days)\nNotes: ${data.notes || 'None'}`,
     { htmlBody: html, name: 'Dwelly Leave Tracker' }
   );
