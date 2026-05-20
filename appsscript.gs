@@ -17,8 +17,9 @@
 const SHEET_ID   = 'YOUR_SHEET_ID';            // from your Sheet URL
 const SHEET_NAME = 'Absences';
 const NOTIFY     = [
-  'katya@dwelly.group',
-  'director@youragency.com'                    // ← replace with agency director email
+  'katya@dwelly.group'
+  // Add agency director email here later, e.g.:
+  // 'director@dwelly.group'
 ];
 
 // ─── ROUTER ──────────────────────────────────────────────────────
