@@ -1428,11 +1428,16 @@ async function submitAbsence() {
   const team   = getTeamFor(person);
 
   const submitBtn = document.getElementById('submit-btn');
+  const wasEditing = !!editingId;
+  const resetButton = () => {
+    submitBtn.classList.remove('btn-loading');
+    submitBtn.textContent = wasEditing ? 'Update' : 'Submit';
+  };
   submitBtn.classList.add('btn-loading');
-  submitBtn.textContent = editingId ? 'Updating…' : 'Submitting…';
+  submitBtn.textContent = wasEditing ? 'Updating…' : 'Submitting…';
 
   try {
-    if (!editingId) {
+    if (!wasEditing) {
       const payload = {
         action: 'create',
         id: uuid(), person, team, type,
@@ -1452,14 +1457,13 @@ async function submitAbsence() {
     }
   } catch (e) {
     document.getElementById('modal-error').textContent = e.message || 'Something went wrong — please try again.';
-    submitBtn.classList.remove('btn-loading');
-    submitBtn.textContent = editingId ? 'Update' : 'Submit';
+    resetButton();
     return;
   }
 
-  const wasEditing = editingId;
   await loadAndRender();
   closeModal();
+  resetButton();
   toast(wasEditing ? '✓ Absence updated' : '✓ Absence logged and calendar updated', 'success');
 }
 
